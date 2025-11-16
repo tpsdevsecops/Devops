@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vulnerable-pod
+  labels:
+    app: vulnerable-app
+spec:
+  hostNetwork: true   # ❌ BAD: Gives pod access to host network
+  containers:
+    - name: vulnerable-container
+      image: nginx:latest   # ❌ Using :latest tag (not pinned)
+      imagePullPolicy: Always
+      securityContext:
+        privileged: true   # ❌ Privileged container (full host access)
+        allowPrivilegeEscalation: true  # ❌ Escalation allowed
+        runAsUser: 0   # ❌ Running as root user
+      ports:
+        - containerPort: 80
+      env:
+        - name: DB_PASSWORD
+          value: "SuperSecret123"   # ❌ Hardcoded secret
+        - name: ENVIRONMENT
+          value: "production"
+      volumeMounts:
+        - name: host-volume
+          mountPath: /host-data   # ❌ HostPath mount (dangerous)
+  volumes:
+    - name: host-volume
+      hostPath:
+        path: /etc            # ❌ Mounting sensitive host directory
+        type: Directory
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vulnerable-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vul-app
+  template:
+    metadata:
+      labels:
+        app: vul-app
+    spec:
+      containers:
+        - name: app
+          image: python:3.9
+          securityContext:
+            runAsNonRoot: false     # ❌ Should be true
+          resources:
+            limits: {}              # ❌ No resource limits
+            requests: {}            # ❌ No resource requests
+          readinessProbe:           # ❌ Probe missing proper checks
+            httpGet:
+              path: /
+              port: 8080
+          livenessProbe:            # ❌ Probe missing proper checks
+            httpGet:
+              path: /
+              port: 8080
